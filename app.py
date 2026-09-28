@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 from pathlib import Path
 
 from src.database import (
@@ -8,7 +7,8 @@ from src.database import (
     get_incidents,
     update_alert_status,
     update_incident_status,
-    get_incident_statistics
+    get_incident_statistics,
+    initialize_incident_table
 )
 
 
@@ -24,12 +24,18 @@ st.set_page_config(
 
 
 # ============================================================
-# DATABASE
+# DATABASE INITIALIZATION
 # ============================================================
+
+initialize_incident_table()
 
 DB_FILE = "data/soc.db"
 LOG_FILE = "data/security.log"
 
+
+# ============================================================
+# LOAD ALERTS
+# ============================================================
 
 def load_alerts():
 
@@ -54,6 +60,10 @@ def load_alerts():
         columns=columns
     )
 
+
+# ============================================================
+# LOAD INCIDENTS
+# ============================================================
 
 def load_incidents():
 
@@ -83,6 +93,7 @@ def load_incidents():
 alerts_df = load_alerts()
 incidents_df = load_incidents()
 incident_stats = get_incident_statistics()
+
 
 # ============================================================
 # HEADER
@@ -160,11 +171,15 @@ average_risk = (
 
 total_incidents = len(incidents_df)
 
-open_incidents = len(
-    incidents_df[
-        incidents_df["status"] == "Open"
-    ]
-) if not incidents_df.empty else 0
+open_incidents = (
+    len(
+        incidents_df[
+            incidents_df["status"] == "Open"
+        ]
+    )
+    if not incidents_df.empty
+    else 0
+)
 
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -198,6 +213,7 @@ col6.metric(
     "Open Incidents",
     open_incidents
 )
+
 
 # ============================================================
 # SOC INCIDENT KPIs
@@ -236,6 +252,7 @@ kpi6.metric(
     "Avg Risk",
     f"{incident_stats['average_risk']:.1f}"
 )
+
 
 # ============================================================
 # TABS
@@ -423,29 +440,23 @@ with tabs[2]:
 
         current_status = selected_alert["status"]
 
+        status_options = [
+            "Open",
+            "Investigating",
+            "Resolved"
+        ]
+
         new_status = st.selectbox(
             "Status",
-            [
-                "Open",
-                "Investigating",
-                "Resolved"
-            ],
-            index=[
-                "Open",
-                "Investigating",
-                "Resolved"
-            ].index(current_status)
-            if current_status in [
-                "Open",
-                "Investigating",
-                "Resolved"
-            ]
-            else 0
+            status_options,
+            index=(
+                status_options.index(current_status)
+                if current_status in status_options
+                else 0
+            )
         )
 
-        if st.button(
-            "Update Alert Status"
-        ):
+        if st.button("Update Alert Status"):
 
             update_alert_status(
                 selected_alert_id,
@@ -612,7 +623,9 @@ with tabs[6]:
 
     if filtered_alerts.empty:
 
-        st.info("No alerts available for the report.")
+        st.info(
+            "No alerts available for the report."
+        )
 
     else:
 
@@ -772,6 +785,10 @@ with tabs[7]:
             incident_ids
         )
 
+        # FIX:
+        # The incident variable is created inside the
+        # same else block where it is used.
+
         incident = incidents_df[
             incidents_df["incident_id"]
             == selected_incident_id
@@ -804,7 +821,7 @@ with tabs[7]:
         with col2:
 
             st.write(
-                "**Related Alert:**",
+                "**Related Alerts:**",
                 incident["related_alerts"]
             )
 
@@ -823,43 +840,46 @@ with tabs[7]:
                 incident["updated_at"]
             )
 
-st.markdown("### Update Incident Status")
+        st.markdown("### Update Incident Status")
 
-incident_status_options = [
-    "Open",
-    "Investigating",
-    "Resolved"
-]
+        incident_status_options = [
+            "Open",
+            "Investigating",
+            "Resolved"
+        ]
 
-current_incident_status = incident["status"]
+        current_incident_status = incident["status"]
 
-new_incident_status = st.selectbox(
-    "Incident Status",
-    incident_status_options,
-    index=incident_status_options.index(
-        current_incident_status
-    )
-    if current_incident_status
-    in incident_status_options
-    else 0
-)
+        new_incident_status = st.selectbox(
+            "Incident Status",
+            incident_status_options,
+            index=(
+                incident_status_options.index(
+                    current_incident_status
+                )
+                if current_incident_status
+                in incident_status_options
+                else 0
+            )
+        )
 
-if st.button(
-    "Update Incident Status"
-):
+        if st.button(
+            "Update Incident Status"
+        ):
 
-    update_incident_status(
-        int(incident["incident_id"]),
-        new_incident_status
-    )
+            update_incident_status(
+                int(incident["incident_id"]),
+                new_incident_status
+            )
 
-    st.success(
-        "Incident status updated successfully."
-    )
+            st.success(
+                "Incident status updated successfully."
+            )
 
-    st.rerun()
+            st.rerun()
 
-    # ============================================================
+
+# ============================================================
 # DETECTION RULES
 # ============================================================
 
@@ -872,6 +892,7 @@ with tabs[8]:
     )
 
     detection_rules = pd.DataFrame([
+
         {
             "Rule ID": "AUTH-001",
             "Detection": "Repeated Failed Login",
@@ -879,6 +900,7 @@ with tabs[8]:
             "Severity": "HIGH",
             "Risk Score": 80
         },
+
         {
             "Rule ID": "AUTH-002",
             "Detection": "Successful Login After Failed Attempts",
@@ -886,6 +908,7 @@ with tabs[8]:
             "Severity": "MEDIUM",
             "Risk Score": 50
         },
+
         {
             "Rule ID": "AUTH-003",
             "Detection": "Multiple Usernames from One IP",
@@ -893,6 +916,7 @@ with tabs[8]:
             "Severity": "MEDIUM",
             "Risk Score": 50
         },
+
         {
             "Rule ID": "AUTH-004",
             "Detection": "Rapid Brute-Force Activity",
@@ -900,6 +924,7 @@ with tabs[8]:
             "Severity": "HIGH",
             "Risk Score": 90
         },
+
         {
             "Rule ID": "AUTH-005",
             "Detection": "Unusual Login Time",
@@ -907,6 +932,7 @@ with tabs[8]:
             "Severity": "MEDIUM",
             "Risk Score": 50
         },
+
         {
             "Rule ID": "AUTH-006",
             "Detection": "Same User from Multiple IPs",
@@ -914,6 +940,7 @@ with tabs[8]:
             "Severity": "MEDIUM",
             "Risk Score": 50
         },
+
         {
             "Rule ID": "AUTH-007",
             "Detection": "Login After Long Inactivity",
@@ -921,6 +948,7 @@ with tabs[8]:
             "Severity": "MEDIUM",
             "Risk Score": 50
         },
+
         {
             "Rule ID": "CORR-001",
             "Detection": "Multiple Security Alerts from Same IP",
@@ -928,6 +956,7 @@ with tabs[8]:
             "Severity": "HIGH",
             "Risk Score": 90
         },
+
         {
             "Rule ID": "CORR-002",
             "Detection": "Multiple High-Risk Alerts from Same IP",
@@ -935,6 +964,7 @@ with tabs[8]:
             "Severity": "HIGH",
             "Risk Score": 100
         }
+
     ])
 
     st.dataframe(
@@ -942,6 +972,7 @@ with tabs[8]:
         use_container_width=True,
         hide_index=True
     )
+
 
 # ============================================================
 # FOOTER
